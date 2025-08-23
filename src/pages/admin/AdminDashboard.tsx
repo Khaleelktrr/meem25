@@ -4,6 +4,7 @@ import AdminSidebar from '../../components/admin/AdminSidebar';
 import AdminHeader from '../../components/admin/AdminHeader';
 import AdminOverview from '../../components/admin/AdminOverview';
 import AdminResults from '../../components/admin/AdminResults';
+import AdminTeams from '../../components/admin/AdminTeams';
 import AdminNews from '../../components/admin/AdminNews';
 import AdminGallery from '../../components/admin/AdminGallery';
 import AdminContact from '../../components/admin/AdminContact';
@@ -29,6 +30,7 @@ const AdminDashboard: React.FC = () => {
           <Routes>
             <Route path="/dashboard" element={<AdminOverview />} />
             <Route path="/results" element={<AdminResults />} />
+            <Route path="/teams" element={<AdminTeams />} />
             <Route path="/news" element={<AdminNews />} />
             <Route path="/gallery" element={<AdminGallery />} />
             <Route path="/contact" element={<AdminContact />} />

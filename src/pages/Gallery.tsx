@@ -147,7 +147,7 @@ const Gallery: React.FC = () => {
                 >
                   <div className="relative overflow-hidden">
                     <img
-                      src={item.image_url || 'https://img-wrapper.vercel.app/image?url=https://img-wrapper.vercel.app/image?url=https://placehold.co/600x400/8B0000/FFD700?text=Gallery'}
+                      src={item.image_url || 'https://img-wrapper.vercel.app/image?url=https://placehold.co/600x400/8B0000/FFD700?text=Gallery'}
                       alt={item.title}
                       className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-300"
                     />

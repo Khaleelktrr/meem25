@@ -6,8 +6,14 @@ export interface Result {
   participant: string;
   school: string;
   position: number;
-  points: number;
   year: string;
+}
+
+export interface Team {
+  id: string;
+  created_at: string;
+  name: string;
+  points: number;
 }
 
 export interface NewsItem {

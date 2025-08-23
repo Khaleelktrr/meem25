@@ -30,10 +30,13 @@ const AdminAbout: React.FC = () => {
   const handleSaveContent = async (section: string) => {
     const { error } = await supabase
       .from('about_content')
-      .update({ content: content[section] })
-      .eq('section', section);
-    if (error) alert(`Error saving content: ${error.message}`);
-    else setIsEditing(prev => ({ ...prev, [section]: false }));
+      .upsert({ section: section, content: content[section] }, { onConflict: 'section' });
+
+    if (error) {
+      alert(`Error saving content: ${error.message}`);
+    } else {
+      setIsEditing(prev => ({ ...prev, [section]: false }));
+    }
   };
 
   const handleTeamSubmit = async (e: React.FormEvent) => {

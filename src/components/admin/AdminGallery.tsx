@@ -10,6 +10,8 @@ const AdminGallery: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<GalleryItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     category: 'Competitions',
@@ -40,22 +42,31 @@ const AdminGallery: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    setIsSubmitting(true);
+    setFormError(null);
+
+    let mutationError;
+
     if (editingItem) {
       const { error } = await supabase
         .from('gallery')
         .update({ ...formData })
         .eq('id', editingItem.id);
-      if (error) alert(`Error updating photo: ${error.message}`);
+      mutationError = error;
     } else {
       const { error } = await supabase
         .from('gallery')
         .insert([{ ...formData, views: 0 }]);
-      if (error) alert(`Error adding photo: ${error.message}`);
+      mutationError = error;
     }
     
-    await fetchGallery();
-    resetForm();
+    if (mutationError) {
+      setFormError(mutationError.message);
+    } else {
+      await fetchGallery();
+      resetForm();
+    }
+    setIsSubmitting(false);
   };
 
   const resetForm = () => {
@@ -68,6 +79,7 @@ const AdminGallery: React.FC = () => {
     });
     setEditingItem(null);
     setShowForm(false);
+    setFormError(null);
   };
 
   const handleEdit = (item: GalleryItem) => {
@@ -80,6 +92,7 @@ const AdminGallery: React.FC = () => {
     });
     setEditingItem(item);
     setShowForm(true);
+    setFormError(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -106,7 +119,7 @@ const AdminGallery: React.FC = () => {
           <p className="text-gray-600">Upload and manage gallery photos</p>
         </div>
         <button
-          onClick={() => { setEditingItem(null); setShowForm(true); }}
+          onClick={() => { setEditingItem(null); setShowForm(true); setFormError(null); }}
           className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
         >
           <Plus className="w-5 h-5" />
@@ -163,6 +176,11 @@ const AdminGallery: React.FC = () => {
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">{editingItem ? 'Edit Photo' : 'Add New Photo'}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {formError && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                  <span className="block sm:inline">{formError}</span>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
                 <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" required />
@@ -190,7 +208,9 @@ const AdminGallery: React.FC = () => {
                 <textarea rows={3} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" required />
               </div>
               <div className="flex space-x-3 pt-4">
-                <button type="submit" className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg">{editingItem ? 'Update' : 'Add'} Photo</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg flex items-center justify-center disabled:opacity-50">
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingItem ? 'Update Photo' : 'Add Photo')}
+                </button>
                 <button type="button" onClick={resetForm} className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg">Cancel</button>
               </div>
             </form>

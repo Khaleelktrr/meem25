@@ -139,7 +139,7 @@ const News: React.FC = () => {
                       className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
                     >
                       <img
-                        src={item.image_url || 'https://img-wrapper.vercel.app/image?url=https://img-wrapper.vercel.app/image?url=https://placehold.co/800x400/8B0000/FFD700?text=News'}
+                        src={item.image_url || 'https://img-wrapper.vercel.app/image?url=https://placehold.co/800x400/8B0000/FFD700?text=News'}
                         alt={item.title}
                         className="w-full h-48 object-cover"
                       />
@@ -193,7 +193,7 @@ const News: React.FC = () => {
                   >
                     <div className="flex flex-col md:flex-row gap-6">
                       <img
-                        src={item.image_url || 'https://img-wrapper.vercel.app/image?url=https://img-wrapper.vercel.app/image?url=https://placehold.co/800x400/8B0000/FFD700?text=News'}
+                        src={item.image_url || 'https://img-wrapper.vercel.app/image?url=https://placehold.co/800x400/8B0000/FFD700?text=News'}
                         alt={item.title}
                         className="w-full md:w-48 h-32 object-cover rounded-lg"
                       />

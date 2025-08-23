@@ -159,7 +159,7 @@ const AdminNews: React.FC = () => {
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center">
-                        <img src={item.image_url || 'https://img-wrapper.vercel.app/image?url=https://img-wrapper.vercel.app/image?url=https://placehold.co/40x40'} alt={item.title} className="w-10 h-10 rounded object-cover mr-3" />
+                        <img src={item.image_url || 'https://img-wrapper.vercel.app/image?url=https://placehold.co/40x40/8B0000/FFFFFF?text=M'} alt={item.title} className="w-10 h-10 rounded object-cover mr-3" />
                         <div>
                           <div className="font-medium text-gray-900">{item.title}</div>
                           {item.is_featured && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Featured</span>}

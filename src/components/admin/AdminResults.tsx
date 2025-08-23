@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, Download, Loader2, Trophy, Medal, Award } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Trash2, Search, Download, Loader2, Trophy, Medal, Award, Edit } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Result } from '../../types';
 
@@ -10,15 +10,16 @@ const AdminResults: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingCompetition, setEditingCompetition] = useState<{ event: string; category: string; year: string } | null>(null);
 
   const initialWinnersData = {
     program: '',
     category: '',
     year: '2025',
     winners: [
-      { participant: '', school: '', position: 1, points: 10 },
-      { participant: '', school: '', position: 2, points: 7 },
-      { participant: '', school: '', position: 3, points: 5 },
+      { participant: '', school: '', position: 1 },
+      { participant: '', school: '', position: 2 },
+      { participant: '', school: '', position: 3 },
     ]
   };
 
@@ -54,6 +55,19 @@ const AdminResults: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
 
+    if (editingCompetition) {
+      const { error: deleteError } = await supabase
+        .from('results')
+        .delete()
+        .match(editingCompetition);
+      
+      if (deleteError) {
+        alert(`Error updating results: ${deleteError.message}`);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     const resultsToInsert = winnersData.winners
       .filter(winner => winner.participant.trim() !== '')
       .map(winner => ({
@@ -63,29 +77,59 @@ const AdminResults: React.FC = () => {
         participant: winner.participant,
         school: winner.school,
         position: winner.position,
-        points: winner.points,
       }));
 
-    if (resultsToInsert.length === 0) {
-      alert('Please enter at least the 1st place winner.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    const { error } = await supabase.from('results').insert(resultsToInsert);
-
-    if (error) {
-      alert(`Error adding winners: ${error.message}`);
+    if (resultsToInsert.length > 0) {
+      const { error: insertError } = await supabase.from('results').insert(resultsToInsert);
+      if (insertError) {
+        alert(`Error saving winners: ${insertError.message}`);
+      } else {
+        await fetchResults();
+        resetForm();
+      }
     } else {
+      // This handles deleting a competition by removing all winners
       await fetchResults();
       resetForm();
     }
+    
     setIsSubmitting(false);
   };
 
   const resetForm = () => {
     setWinnersData(initialWinnersData);
+    setEditingCompetition(null);
     setShowForm(false);
+  };
+
+  const handleEdit = (competition: { event: string; category: string; year: string; winners: Result[] }) => {
+    const winnersFromDb = competition.winners;
+    const winnersForForm = [
+      { participant: '', school: '', position: 1 },
+      { participant: '', school: '', position: 2 },
+      { participant: '', school: '', position: 3 },
+    ];
+
+    winnersFromDb.forEach(winner => {
+      if (winner.position >= 1 && winner.position <= 3) {
+        winnersForForm[winner.position - 1].participant = winner.participant;
+        winnersForForm[winner.position - 1].school = winner.school;
+      }
+    });
+
+    setWinnersData({
+      program: competition.event,
+      category: competition.category,
+      year: competition.year,
+      winners: winnersForForm,
+    });
+
+    setEditingCompetition({
+      event: competition.event,
+      category: competition.category,
+      year: competition.year,
+    });
+    setShowForm(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -99,31 +143,90 @@ const AdminResults: React.FC = () => {
     }
   };
 
-  const filteredResults = results.filter(result =>
-    result.participant.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    result.school.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    result.event.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const groupedResults = useMemo(() => {
+    if (!results) return [];
+    const groups: { [key: string]: { event: string; category: string; year: string; winners: Result[] } } = {};
+
+    results.forEach(result => {
+        const key = `${result.event}-${result.category}-${result.year}`;
+        if (!groups[key]) {
+            groups[key] = {
+                event: result.event,
+                category: result.category,
+                year: result.year,
+                winners: [],
+            };
+        }
+        groups[key].winners.push(result);
+    });
+
+    Object.values(groups).forEach(group => {
+        group.winners.sort((a, b) => a.position - b.position);
+    });
+
+    return Object.values(groups).sort((a, b) => a.event.localeCompare(b.event));
+  }, [results]);
+
+  const filteredGroupedResults = useMemo(() => {
+    return groupedResults.filter(group =>
+        group.event.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        group.category.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [groupedResults, searchTerm]);
+
+  const handleDeleteCompetition = async (event: string, category: string, year: string) => {
+    if (window.confirm(`Are you sure you want to delete all results for "${event} - ${category} (${year})"? This action cannot be undone.`)) {
+      const { error } = await supabase
+        .from('results')
+        .delete()
+        .match({ event, category, year });
+
+      if (error) {
+        alert(`Error deleting competition results: ${error.message}`);
+      } else {
+        await fetchResults();
+      }
+    }
+  };
+
+  const handleDownload = () => {
+    const resultsToExport = searchTerm 
+      ? results.filter(result => 
+          filteredGroupedResults.some(group => 
+            group.event === result.event && group.category === result.category && group.year === result.year
+          )
+        )
+      : results;
+
+    const headers = ['ID', 'Event', 'Category', 'Year', 'Participant', 'School', 'Position', 'Created At'];
+    const csvContent = [
+      headers.join(','),
+      ...resultsToExport.map(result => [
+        `"${result.id}"`,
+        `"${result.event.replace(/"/g, '""')}"`,
+        `"${result.category.replace(/"/g, '""')}"`,
+        `"${result.year}"`,
+        `"${result.participant.replace(/"/g, '""')}"`,
+        `"${result.school.replace(/"/g, '""')}"`,
+        result.position,
+        `"${result.created_at}"`
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'muhimmath-results.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const winnerCards = [
-    {
-      place: '1st Place',
-      icon: Trophy,
-      color: 'yellow',
-      required: true,
-    },
-    {
-      place: '2nd Place',
-      icon: Medal,
-      color: 'gray',
-      required: false,
-    },
-    {
-      place: '3rd Place',
-      icon: Award,
-      color: 'amber',
-      required: false,
-    },
+    { place: '1st Place', icon: Trophy, color: 'yellow', required: true },
+    { place: '2nd Place', icon: Medal, color: 'gray', required: false },
+    { place: '3rd Place', icon: Award, color: 'amber', required: false },
   ];
 
   return (
@@ -135,7 +238,7 @@ const AdminResults: React.FC = () => {
           <p className="text-gray-600">Add, edit, and manage competition results</p>
         </div>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={() => { resetForm(); setShowForm(true); }}
           className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
         >
           <Plus className="w-5 h-5" />
@@ -150,101 +253,92 @@ const AdminResults: React.FC = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search results..."
+              placeholder="Search results by program or category..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
             />
           </div>
-          <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2">
+          <button
+            onClick={handleDownload}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+          >
             <Download className="w-5 h-5" />
             Export CSV
           </button>
         </div>
       </div>
 
-      {/* Results Table */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Participant
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Team/School
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Program
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Position
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="text-center py-8">
-                    <Loader2 className="w-6 h-6 text-red-600 animate-spin mx-auto" />
-                  </td>
-                </tr>
-              ) : error ? (
-                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-red-600">
-                    Error: {error}
-                  </td>
-                </tr>
-              ) : (
-                filteredResults.map((result) => (
-                  <tr key={result.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium text-gray-900">{result.participant}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
-                      {result.school}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
-                      {result.event}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        result.position === 1 ? 'bg-yellow-100 text-yellow-800' :
-                        result.position === 2 ? 'bg-gray-100 text-gray-800' :
-                        result.position === 3 ? 'bg-orange-100 text-orange-800' :
-                        'bg-blue-100 text-blue-800'
-                      }`}>
-                        {result.position}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleDelete(result.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* Results View */}
+      <div className="space-y-4">
+        {loading ? (
+          <div className="flex justify-center items-center py-12"><Loader2 className="w-8 h-8 text-red-600 animate-spin" /></div>
+        ) : error ? (
+          <div className="text-center py-12 text-red-600"><h3 className="text-xl font-semibold">Error loading results</h3><p>{error}</p></div>
+        ) : filteredGroupedResults.length > 0 ? (
+          filteredGroupedResults.map((group) => (
+            <div key={`${group.event}-${group.category}-${group.year}`} className="bg-white rounded-lg shadow-md p-6">
+              <div className="flex items-center justify-between mb-4 border-b pb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">{group.event}</h3>
+                  <p className="text-sm text-gray-500">{group.category} - {group.year}</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleEdit(group)}
+                    className="text-blue-500 hover:text-blue-700 p-2 rounded-full hover:bg-blue-50 transition-colors"
+                    title="Edit this competition's winners"
+                  >
+                    <Edit className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCompetition(group.event, group.category, group.year)}
+                    className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors"
+                    title="Delete all results for this competition"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {group.winners.map((winner) => (
+                  <div key={winner.id} className={`p-4 rounded-lg flex justify-between items-start ${
+                    winner.position === 1 ? 'bg-yellow-50 border border-yellow-200' :
+                    winner.position === 2 ? 'bg-gray-100 border border-gray-200' :
+                    'bg-orange-50 border border-orange-200'
+                  }`}>
+                    <div>
+                      <div className="font-bold text-lg">{winner.position === 1 ? '1st' : winner.position === 2 ? '2nd' : '3rd'} Place</div>
+                      <div className="font-semibold text-gray-900">{winner.participant}</div>
+                      <div className="text-sm text-gray-600">{winner.school || 'Individual'}</div>
+                    </div>
+                    <button
+                      onClick={() => handleDelete(winner.id)}
+                      className="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0 ml-2"
+                      title="Delete this winner"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-12 text-gray-500">
+            <Trophy className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+            <h3 className="text-xl font-semibold">No Results Found</h3>
+            <p>Try clearing your search or adding new results.</p>
+          </div>
+        )}
       </div>
 
-      {/* Add Winners Form Modal */}
+      {/* Add/Edit Winners Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-8 w-full max-w-4xl max-h-[95vh] overflow-y-auto">
             <h3 className="text-2xl font-bold text-gray-900 mb-6">
-              Add Winners
+              {editingCompetition ? 'Edit Winners' : 'Add Winners'}
             </h3>
             
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -258,9 +352,10 @@ const AdminResults: React.FC = () => {
                     type="text"
                     value={winnersData.program}
                     onChange={(e) => setWinnersData({...winnersData, program: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                     placeholder="Enter program name"
                     required
+                    disabled={!!editingCompetition}
                   />
                 </div>
                 <div>
@@ -270,8 +365,9 @@ const AdminResults: React.FC = () => {
                   <select
                     value={winnersData.category}
                     onChange={(e) => setWinnersData({...winnersData, category: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                     required
+                    disabled={!!editingCompetition}
                   >
                     <option value="">Select Category</option>
                     <option value="General">General</option>
@@ -336,13 +432,6 @@ const AdminResults: React.FC = () => {
               <div className="flex items-center justify-end space-x-4 pt-4">
                 <button
                   type="button"
-                  onClick={() => setWinnersData(initialWinnersData)}
-                  className="bg-white text-gray-700 py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-100"
-                >
-                  Clear Form
-                </button>
-                <button
-                  type="button"
                   onClick={resetForm}
                   className="bg-white text-gray-700 py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-100"
                 >
@@ -351,9 +440,9 @@ const AdminResults: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-red-800 text-white py-2 px-6 rounded-lg hover:bg-red-900 transition-colors disabled:opacity-50"
+                  className="bg-red-800 text-white py-2 px-6 rounded-lg hover:bg-red-900 transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
-                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Add Winners'}
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingCompetition ? 'Update Winners' : 'Add Winners')}
                 </button>
               </div>
             </form>
